@@ -161,7 +161,7 @@
             if (!db || !window.appState.isReady) return;
             try {
                 for (let i = 1; i <= 6; i++) {
-                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'teams', `team_${i}`);
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'medtech_11B_race', ...);
                     await setDoc(docRef, { step: 0, status: 'active', updatedAt: Date.now() });
                 }
             } catch (error) {
@@ -172,7 +172,7 @@
         window.teacherResetTeam = async function(teamId) {
             if (!db || !window.appState.isReady) return;
             try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'teams', `team_${teamId}`);
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'medtech_11B_race', ...)
                 await updateDoc(docRef, { step: 0, status: 'active', updatedAt: Date.now() });
             } catch (error) {
                 console.error("Reset Error:", error);
@@ -188,7 +188,7 @@
             if (!teamData || teamData.step !== (roleId - 1) || teamData.status !== 'active') return;
 
             try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'teams', `team_${teamId}`);
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'medtech_11B_race', ...);
                 if (success) {
                     let newStatus = 'active';
                     if (roleId === 5) newStatus = 'completed'; // End of chain
