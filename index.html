@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedTech Multi-Sig Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8FAFC; /* Light gray/blue slate */
+            color: #0F172A;
+            -webkit-font-smoothing: antialiased;
+        }
+        .medtech-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3B82F6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header Navigation -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="navigate('landing')">
+            <div class="w-8 h-8 rounded bg-blue-50 flex items-center justify-center border border-blue-100">
+                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            </div>
+            <div>
+                <h1 class="font-semibold text-slate-800 tracking-tight leading-tight">LedgerSync</h1>
+                <p class="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Cold Chain Protocol</p>
+            </div>
+        </div>
+        <div id="auth-status" class="text-xs font-mono text-slate-400 bg-slate-50 px-3 py-1 rounded border border-slate-100">
+            Connecting to network...
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="app" class="flex-grow p-6 md:p-12 flex flex-col items-center justify-center">
+        <!-- Views injected via JS -->
+    </main>
+
+    <!-- Firebase SDK Setup -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Environment Variables (Provided by Immersive Environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'medtech-sim-default';
+        const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        const firebaseConfig = {
+
+            apiKey: "AIzaSyBxeJMjNzT2f3PzfCxTh82YEZalA9xCbf8",
+
+            authDomain: "spiritual-cyclist-95w43.firebaseapp.com",
+
+            projectId: "spiritual-cyclist-95w43",
+
+            storageBucket: "spiritual-cyclist-95w43.firebasestorage.app",
+
+            messagingSenderId: "544073592516",
+
+            appId: "1:544073592516:web:8ae29511e7cdc2160a2391"
+
+        };
+
+        // try {
+        //     firebaseConfig = JSON.parse(configStr);
+        // } catch (e) {
+        //     console.error("Invalid firebase config");
+        // }
+
+        // Initialize Firebase (Skip if config is empty for local UI testing, though required for function)
+        let app, auth, db;
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        }
+
+        // --- Application State ---
+        window.appState = {
+            view: 'landing', // 'landing', 'teacher', 'student_team', 'student_role', 'student_dash'
+            teamId: null,
+            roleId: null,
+            teamsData: {}, // Holds real-time data from Firestore
+            userId: null,
+            isReady: false
+        };
+
+        const ROLES = [
+            { id: 1, title: "Manufacturer", action: "Mint Vaccine Batch", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
+            { id: 2, title: "Logistics Pilot", action: "Assume Custody", icon: "M12 19l9 2-9-18-9 18 9-2zm0 0v-8" },
+            { id: 3, title: "IoT Sensor", action: "Verify 4°C Temp", icon: "M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" },
+            { id: 4, title: "Customs Officer", action: "Clear Regulatory", icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
+            { id: 5, title: "Hospital Admin", action: "Sign Receipt", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" }
+        ];
+
+        // --- Authentication ---
+        async function authenticate() {
+            if (!auth) return;
+            try {
+                const customToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (customToken) {
+                    await signInWithCustomToken(auth, customToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                window.appState.userId = auth.currentUser.uid;
+                document.getElementById('auth-status').innerHTML = `<span class="text-emerald-500 font-bold">●</span> Network Live`;
+                window.appState.isReady = true;
+                listenToTeams();
+                render();
+            } catch (error) {
+                console.error("Auth error:", error);
+                document.getElementById('auth-status').innerHTML = `<span class="text-red-500 font-bold">●</span> Network Error`;
+            }
+        }
+
+        // --- Firebase Data Operations ---
+        function getCollectionRef() {
+            // RULE 1: Strict paths for public collaborative data
+            return collection(db, 'artifacts', appId, 'public', 'data', 'medtech_11B_race');
+        }
+
+        function listenToTeams() {
+            if (!db || !window.appState.isReady) return;
+            
+            const colRef = getCollectionRef();
+            // RULE 2: No complex queries, fetch all teams
+            onSnapshot(colRef, (snapshot) => {
+                const newData = {};
+                snapshot.forEach(doc => {
+                    newData[doc.id] = doc.data();
+                });
+                window.appState.teamsData = newData;
+                render(); // Re-render UI on data change
+            }, (error) => {
+                console.error("Snapshot error:", error);
+            });
+        }
+
+        window.teacherInitializeDB = async function() {
+            if (!db || !window.appState.isReady) return;
+            try {
+                for (let i = 1; i <= 6; i++) {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'teams', `team_${i}`);
+                    await setDoc(docRef, { step: 0, status: 'active', updatedAt: Date.now() });
+                }
+            } catch (error) {
+                console.error("Init DB Error:", error);
+            }
+        }
+
+        window.teacherResetTeam = async function(teamId) {
+            if (!db || !window.appState.isReady) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'teams', `team_${teamId}`);
+                await updateDoc(docRef, { step: 0, status: 'active', updatedAt: Date.now() });
+            } catch (error) {
+                console.error("Reset Error:", error);
+            }
+        }
+
+        window.executeRoleAction = async function(success = true) {
+            if (!db || !window.appState.isReady) return;
+            const { teamId, roleId, teamsData } = window.appState;
+            const teamData = teamsData[`team_${teamId}`];
+            
+            // Security check: Only allow if it's actually their turn
+            if (!teamData || teamData.step !== (roleId - 1) || teamData.status !== 'active') return;
+
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'teams', `team_${teamId}`);
+                if (success) {
+                    let newStatus = 'active';
+                    if (roleId === 5) newStatus = 'completed'; // End of chain
+                    await updateDoc(docRef, { step: roleId, status: newStatus, updatedAt: Date.now() });
+                } else {
+                    // IoT sensor reports spike
+                    await updateDoc(docRef, { status: 'failed', updatedAt: Date.now() });
+                }
+            } catch (error) {
+                console.error("Action Error:", error);
+            }
+        }
+
+
+        // --- Navigation ---
+        window.navigate = function(view, id = null) {
+            window.appState.view = view;
+            if (view === 'landing') {
+                window.appState.teamId = null;
+                window.appState.roleId = null;
+            }
+            if (view === 'student_role') window.appState.teamId = id;
+            if (view === 'student_dash') window.appState.roleId = id;
+            render();
+        }
+
+        // --- Render Logic ---
+        function render() {
+            const appDiv = document.getElementById('app');
+            const { view, isReady } = window.appState;
+
+            if (!isReady && view !== 'landing') {
+                appDiv.innerHTML = `<div class="flex flex-col items-center"><div class="loader mb-4"></div><p class="text-slate-500 text-sm">Synchronizing with blockchain network...</p></div>`;
+                return;
+            }
+
+            switch(view) {
+                case 'landing': appDiv.innerHTML = renderLanding(); break;
+                case 'teacher': appDiv.innerHTML = renderTeacherDash(); break;
+                case 'student_team': appDiv.innerHTML = renderStudentTeamSelect(); break;
+                case 'student_role': appDiv.innerHTML = renderStudentRoleSelect(); break;
+                case 'student_dash': appDiv.innerHTML = renderStudentDashboard(); break;
+            }
+        }
+
+        function renderLanding() {
+            return `
+                <div class="max-w-xl w-full bg-white medtech-shadow rounded-2xl p-10 text-center border border-slate-100">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-light text-slate-800 mb-3 tracking-tight">Select Protocol Role</h2>
+                        <p class="text-slate-500 text-sm">Initialize network node connection for the Multi-Sig Supply Chain simulation.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button onclick="navigate('teacher')" class="group relative bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-xl p-8 transition-all duration-200 flex flex-col items-center justify-center overflow-hidden">
+                            <div class="absolute inset-0 bg-blue-500 opacity-0 group-hover:opacity-[0.03] transition-opacity"></div>
+                            <svg class="w-8 h-8 text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            <span class="font-semibold text-slate-700 mb-1">Teacher Node</span>
+                            <span class="text-xs text-slate-400">War Room Dashboard</span>
+                        </button>
+                        <button onclick="navigate('student_team')" class="group relative bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-xl p-8 transition-all duration-200 flex flex-col items-center justify-center overflow-hidden">
+                            <div class="absolute inset-0 bg-blue-500 opacity-0 group-hover:opacity-[0.03] transition-opacity"></div>
+                            <svg class="w-8 h-8 text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            <span class="font-semibold text-slate-700 mb-1">Student Node</span>
+                            <span class="text-xs text-slate-400">Join a Startup Team</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTeacherDash() {
+            const { teamsData } = window.appState;
+            const teamsExist = Object.keys(teamsData).length > 0;
+
+            let html = `
+                <div class="w-full max-w-5xl">
+                    <div class="flex justify-between items-end mb-8">
+                        <div>
+                            <h2 class="text-3xl font-light text-slate-900 tracking-tight">Global Ledger Map</h2>
+                            <p class="text-slate-500 text-sm mt-1">Live Multi-Sig Contract Verification</p>
+                        </div>
+                        <button onclick="teacherInitializeDB()" class="bg-white border border-slate-200 text-slate-600 hover:text-slate-900 px-4 py-2 rounded text-sm font-semibold transition-colors medtech-shadow hover:bg-slate-50">
+                            ${teamsExist ? 'Reset All Ledgers' : 'Initialize Network Nodes'}
+                        </button>
+                    </div>
+            `;
+
+            if (!teamsExist) {
+                html += `<div class="bg-white p-12 text-center border border-slate-200 rounded-xl medtech-shadow"><p class="text-slate-400">Network empty. Initialize nodes to begin simulation.</p></div>`;
+            } else {
+                html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-6">`;
+                for (let i = 1; i <= 6; i++) {
+                    const data = teamsData[`team_${i}`] || { step: 0, status: 'active' };
+                    
+                    let statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Active</span>`;
+                    if (data.status === 'failed') statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Voided</span>`;
+                    if (data.status === 'completed') statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Escrow Unlocked</span>`;
+
+                    html += `
+                        <div class="bg-white border ${data.status === 'failed' ? 'border-red-200' : (data.status === 'completed' ? 'border-emerald-200' : 'border-slate-200')} rounded-xl p-5 medtech-shadow relative overflow-hidden">
+                            ${data.status === 'failed' ? '<div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>' : ''}
+                            ${data.status === 'completed' ? '<div class="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>' : ''}
+                            
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-slate-800">Team ${i} Startup</h3>
+                                ${statusBadge}
+                            </div>
+                            
+                            <!-- Progress Bar -->
+                            <div class="flex justify-between items-center relative mb-2">
+                                <div class="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -z-10 -translate-y-1/2 rounded"></div>
+                                <div class="absolute top-1/2 left-0 h-1 bg-blue-500 -z-10 -translate-y-1/2 rounded transition-all duration-500" style="width: ${(data.step / 5) * 100}%"></div>
+                    `;
+
+                    for (let step = 1; step <= 5; step++) {
+                        let dotClass = "bg-white border-2 border-slate-200 text-slate-400"; // Pending
+                        if (step <= data.step) dotClass = "bg-blue-500 border-2 border-blue-500 text-white"; // Done
+                        if (data.status === 'failed' && step === data.step + 1) dotClass = "bg-red-500 border-2 border-red-500 text-white"; // Failed here
+
+                        html += `<div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${dotClass}">${step}</div>`;
+                    }
+
+                    html += `</div>
+                            <div class="text-[10px] text-slate-400 font-mono tracking-tight uppercase flex justify-between">
+                                <span>Mint</span><span>Hosp</span>
+                            </div>
+                            
+                            ${data.status === 'failed' ? `
+                                <div class="mt-4 flex justify-end">
+                                    <button onclick="teacherResetTeam(${i})" class="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2">Reset Ledger</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+                html += `</div>`;
+            }
+            html += `</div>`;
+            return html;
+        }
+
+        function renderStudentTeamSelect() {
+            let html = `
+                <div class="max-w-3xl w-full text-center">
+                    <h2 class="text-3xl font-light text-slate-800 mb-8 tracking-tight">Select Your Startup Entity</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            `;
+            for (let i = 1; i <= 6; i++) {
+                html += `
+                    <button onclick="navigate('student_role', ${i})" class="bg-white border border-slate-200 rounded-xl p-6 hover:border-blue-300 hover:shadow-md transition-all group">
+                        <div class="w-12 h-12 bg-slate-50 rounded-full mx-auto mb-3 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
+                            <span class="text-lg font-bold text-slate-600 group-hover:text-blue-600">0${i}</span>
+                        </div>
+                        <span class="block font-semibold text-slate-700">Team ${i}</span>
+                    </button>
+                `;
+            }
+            html += `</div></div>`;
+            return html;
+        }
+
+        function renderStudentRoleSelect() {
+            const { teamId } = window.appState;
+            let html = `
+                <div class="max-w-4xl w-full">
+                    <div class="text-center mb-10">
+                        <span class="text-xs font-bold uppercase tracking-wider text-blue-500 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">Team ${teamId} Escrow</span>
+                        <h2 class="text-3xl font-light text-slate-800 mt-4 tracking-tight">Assign Cryptographic Identity</h2>
+                        <p class="text-slate-500 text-sm mt-2">Select your specific role in the smart contract sequence.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            `;
+            
+            ROLES.forEach(role => {
+                html += `
+                    <button onclick="navigate('student_dash', ${role.id})" class="bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-300 hover:bg-slate-50 hover:shadow-sm transition-all text-left flex flex-col justify-between h-full">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 mb-2 block">STEP 0${role.id}</span>
+                            <h3 class="font-bold text-slate-800 text-sm leading-tight">${role.title}</h3>
+                        </div>
+                        <div class="mt-4 text-blue-500">
+                            <svg class="w-5 h-5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${role.icon}"></path></svg>
+                        </div>
+                    </button>
+                `;
+            });
+            html += `</div></div>`;
+            return html;
+        }
+
+        function renderStudentDashboard() {
+            const { teamId, roleId, teamsData } = window.appState;
+            const teamData = teamsData[`team_${teamId}`];
+            const myRole = ROLES.find(r => r.id === roleId);
+            
+            if (!teamData) {
+                return `<div class="text-center"><p class="text-slate-500">Network disconnected. Please tell the teacher to initialize the nodes.</p></div>`;
+            }
+
+            const isMyTurn = (teamData.step === (roleId - 1)) && teamData.status === 'active';
+            const isCompleted = teamData.step >= roleId;
+            const isFailed = teamData.status === 'failed';
+
+            // Determine Header Status
+            let statusBanner = `<div class="bg-blue-50 border-b border-blue-100 text-blue-700 py-2 text-center text-xs font-bold uppercase tracking-widest">Network Listening</div>`;
+            if (isMyTurn) statusBanner = `<div class="bg-amber-50 border-b border-amber-200 text-amber-700 py-2 text-center text-xs font-bold uppercase tracking-widest animate-pulse">Awaiting Your Signature</div>`;
+            if (isCompleted) statusBanner = `<div class="bg-emerald-50 border-b border-emerald-200 text-emerald-700 py-2 text-center text-xs font-bold uppercase tracking-widest">Signature Verified</div>`;
+            if (isFailed) statusBanner = `<div class="bg-red-50 border-b border-red-200 text-red-700 py-2 text-center text-xs font-bold uppercase tracking-widest">Contract Voided</div>`;
+
+
+            let html = `
+                <div class="max-w-md w-full bg-white medtech-shadow rounded-2xl border border-slate-200 overflow-hidden flex flex-col h-[500px]">
+                    ${statusBanner}
+                    
+                    <div class="p-6 flex-grow flex flex-col relative">
+                        <!-- Progress Indicator -->
+                        <div class="flex justify-between items-center mb-8 px-2">
+                            ${ROLES.map(r => `
+                                <div class="flex flex-col items-center">
+                                    <div class="w-3 h-3 rounded-full ${teamData.step >= r.id ? 'bg-emerald-500' : (teamData.step === r.id - 1 && teamData.status !== 'failed' ? 'bg-amber-400' : (teamData.status === 'failed' && teamData.step === r.id - 1 ? 'bg-red-500' : 'bg-slate-200'))}"></div>
+                                </div>
+                            `).join(`
+                                <div class="flex-grow h-px ${teamData.status === 'failed' ? 'bg-red-100' : 'bg-slate-200'} mx-1"></div>
+                            `)}
+                        </div>
+
+                        <div class="text-center flex-grow flex flex-col justify-center">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Identity Confirmed</span>
+                            <h2 class="text-2xl font-semibold text-slate-800">${myRole.title}</h2>
+                            <p class="text-slate-500 text-sm mt-2 px-4">
+                                ${isCompleted ? 'Your transaction has been written to the immutable ledger.' : 
+                                 (isFailed ? 'The supply chain integrity was compromised. Escrow locked.' :
+                                 (isMyTurn ? 'Review physical constraints and cryptographically sign the ledger to execute your logic block.' : 
+                                 'Awaiting upstream cryptographic signatures before your block can be executed.'))}
+                            </p>
+                        </div>
+
+                        <!-- Action Area -->
+                        <div class="mt-auto pt-6 border-t border-slate-100">
+            `;
+
+            if (isFailed) {
+                html += `<button disabled class="w-full bg-slate-100 text-slate-400 font-bold py-4 rounded-xl cursor-not-allowed">CONTRACT TERMINATED</button>`;
+            } else if (isCompleted) {
+                html += `<button disabled class="w-full bg-emerald-50 border border-emerald-200 text-emerald-600 font-bold py-4 rounded-xl cursor-not-allowed flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            VERIFIED IN BLOCKCHAIN
+                        </button>`;
+            } else if (isMyTurn) {
+                if (roleId === 3) {
+                    // Special case for IoT Sensor - ability to fail it
+                    html += `
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="executeRoleAction(true)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-sm text-sm">
+                                Verify 4°C
+                            </button>
+                            <button onclick="executeRoleAction(false)" class="bg-white border border-red-200 text-red-600 hover:bg-red-50 font-bold py-4 rounded-xl transition-colors shadow-sm text-sm">
+                                Report Spike 15°C
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    html += `<button onclick="executeRoleAction(true)" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors shadow-sm shadow-blue-500/30 flex items-center justify-center">
+                                ${myRole.action}
+                             </button>`;
+                }
+            } else {
+                // Not my turn
+                let waitingFor = ROLES[teamData.step].title;
+                html += `<button disabled class="w-full bg-slate-50 border border-slate-200 text-slate-400 font-bold py-4 rounded-xl cursor-not-allowed text-sm">
+                            WAITING ON: ${waitingFor.toUpperCase()}
+                        </button>`;
+            }
+
+            html += `
+                        </div>
+                    </div>
+                </div>
+                <button onclick="navigate('student_role', ${teamId})" class="mt-6 text-sm text-slate-400 hover:text-slate-600 underline underline-offset-4">Switch Identity</button>
+            `;
+
+            return html;
+        }
+
+        // --- Init ---
+        window.onload = function() {
+            authenticate();
+        };
+
+    </script>
+</body>
+</html>
