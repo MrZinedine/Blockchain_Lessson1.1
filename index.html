@@ -92,7 +92,7 @@
         if (Object.keys(firebaseConfig).length > 0) {
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
-            db = getFirestore(app);
+            db = getFirestore(app, "ai-studio-8f12ba47-dcca-4b2f-938c-d79894f6426b");
         }
 
         // --- Application State ---
